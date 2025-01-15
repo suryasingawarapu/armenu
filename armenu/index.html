@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AR Burger Menu</title>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.152.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.152.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.152.0/examples/js/webxr/ARButton.js"></script>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+    }
+    button {
+      display: block;
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 10px 20px;
+      font-size: 16px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      z-index: 999;
+    }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <h1 style="text-align: center; margin-top: 10px;">AR Burger Menu</h1>
+  <button id="ar-button">Place Burger in AR</button>
+
+  <script>
+    let scene, camera, renderer, burgerModel, reticle;
+
+    // Initialize the AR scene
+    function init() {
+      // Setup Scene
+      scene = new THREE.Scene();
+
+      // Setup Camera
+      camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+      scene.add(camera);
+
+      // Setup Renderer
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.xr.enabled = true;
+      document.body.appendChild(renderer.domElement);
+
+      // Setup AR Button
+      document.body.appendChild(THREE.ARButton.createButton(renderer));
+
+      // Load Burger Model
+      const loader = new THREE.GLTFLoader();
+      loader.load('./scanned_burger.glb', (gltf) => {
+        burgerModel = gltf.scene;
+        burgerModel.scale.set(0.2, 0.2, 0.2); // Adjust the size of the model
+        console.log("Burger model loaded!");
+      });
+
+      // Setup Reticle for Surface Detection
+      reticle = new THREE.Mesh(new THREE.RingGeometry(0.1, 0.15, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+      reticle.matrixAutoUpdate = false;
+      reticle.visible = false;
+      scene.add(reticle);
+
+      // Controller Setup for AR
+      const controller = renderer.xr.getController(0);
+      controller.addEventListener('select', onPlaceBurger);
+      scene.add(controller);
+
+      renderer.setAnimationLoop(render); // Start the render loop
+    }
+
+    // Event Handler for Placing Burger in AR
+    function onPlaceBurger() {
+      if (reticle.visible && burgerModel) {
+        const placedBurger = burgerModel.clone();
+        placedBurger.position.setFromMatrixPosition(reticle.matrix);
+        scene.add(placedBurger);  // Place the burger in the AR scene
+        console.log("Burger placed!");
+      }
+    }
+
+    // Animation and rendering function
+    function render(timestamp, frame) {
+      if (renderer.xr.isPresenting) {
+        const session = renderer.xr.getSession();
+        const referenceSpace = renderer.xr.getReferenceSpace();
+
+        if (frame) {
+          const viewerPose = frame.getViewerPose(referenceSpace);
+          const hitTestResults = frame.getHitTestResults(session.requestHitTestSource({ space: viewerPose.space }));
+
+          if (hitTestResults.length > 0) {
+            const hit = hitTestResults[0];
+            reticle.matrix.fromArray(hit.getPose(referenceSpace).transform.matrix);
+            reticle.visible = true;
+          } else {
+            reticle.visible = false;
+          }
+        }
+      }
+      renderer.render(scene, camera);
+    }
+
+    // Wait for the AR button to be pressed, then initialize
+    document.getElementById('ar-button').addEventListener('click', () => {
+      if (!scene) init();
+    });
+  </script>
+</body>
+</html>
